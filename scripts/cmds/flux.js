@@ -36,7 +36,6 @@ module.exports = {
     const arIndex = args.indexOf("--ar");
     if (arIndex !== -1 && args[arIndex + 1]) {
       aspectRatio = args[arIndex + 1];
-      // Remove --ar and its value from the prompt
       args.splice(arIndex, 2);
       prompt = args.join(" ");
     }
@@ -48,34 +47,7 @@ module.exports = {
       if (!imageStream) {
         return message.reply("❌ Oops! The image couldn't be generated. For support, Contact mfacebook.com/PriyanshiKaurJi ❤️");
       }
-      
-      return message.reply({
-        body: '✨ Ta-da! Here\'s your Requested Picture! 🖼️',
-        attachment: imageStream
-      });
-    } catch (error) {
-      console.error(error);
-      return message.reply("💔 Oh no! Something went wrong. For help, please join https://t.me/Architectdevs 🆘");
-    }
-  }
-};
 
-const wrapper = new GoatWrapper(module.exports);
-wrapper.applyNoPrefix({ allowPrefix: true });    if (arIndex !== -1 && args[arIndex + 1]) {
-      aspectRatio = args[arIndex + 1];
-      // Remove --ar and its value from the prompt
-      args.splice(arIndex, 2);
-      prompt = args.join(" ");
-    }
-
-    try {
-      const apiUrl = `http://api-samirxz.onrender.com/fluxpro?prompt=${encodeURIComponent(prompt)}&ratio=${aspectRatio}`;
-      const imageStream = await global.utils.getStreamFromURL(apiUrl);
-
-      if (!imageStream) {
-        return message.reply("❌ Oops! The image couldn't be generated. For support, Contact mfacebook.com/PriyanshiKaurJi ❤️");
-      }
-      
       return message.reply({
         body: '✨ Ta-da! Here\'s your Requested Picture! 🖼️',
         attachment: imageStream
