@@ -1,66 +1,123 @@
 const fs = require("fs-extra");
 const { exec } = require("child_process");
+const configPath = `${__dirname}/tmp/refresh-config.json`;
+const notifyPath = `${__dirname}/tmp/refresh-notify.json`;
 
-let isEnabled = false;
+let refreshLoop = null;
+let uptimeStart = Date.now();
 
 module.exports = {
   config: {
     name: "refresh2",
-    version: "1.3",
+    version: "3.1",
     author: "rifat",
     countDown: 5,
     role: 2,
     description: {
-      en: "Clear memory (if allowed) and auto-restart after 6h — toggleable"
+      en: "Auto restart bot, clear memory, and notify groups"
     },
     category: "system",
     guide: {
-      en: "{pn} on | off"
+      en: "{pn} on [time]\n{pn} off\n{pn} notify add/remove/list [tid]"
     }
   },
 
-  langs: {
-    en: {
-      on: "✅ | Refresh mode is now ON. Bot will restart in 6 hours.",
-      off: "❌ | Refresh mode is now OFF.",
-      alreadyOn: "⚠️ | Refresh mode is already ON.",
-      alreadyOff: "⚠️ | Refresh mode is already OFF.",
-      clearing: "🧹 | Attempting to clear system memory...",
-      cleared: "✅ | Memory cleared or skipped due to permissions. Restart scheduled.",
-      restarting: "🔁 | 6 hours passed. Restarting bot now..."
-    }
-  },
+  onStart: async function ({ message, args, api, event }) {
+    const sub = args[0];
 
-  onStart: async function ({ message, event, args, getLang }) {
-    const pathFile = `${__dirname}/tmp/restart.txt`;
-
-    if (args[0] === "on") {
-      if (isEnabled) return message.reply(getLang("alreadyOn"));
-      isEnabled = true;
-      fs.ensureDirSync(`${__dirname}/tmp`);
-      fs.writeFileSync(pathFile, `${event.threadID} ${Date.now()}`);
-      message.reply(getLang("on"));
-
-      message.reply(getLang("clearing"));
-      exec("sync; echo 3 > /proc/sys/vm/drop_caches", (err) => {
-        if (err) console.warn("Memory clear error (skipped):", err.message);
-        message.reply(getLang("cleared"));
-        setTimeout(() => {
-          message.reply(getLang("restarting"));
-          process.exit(2);
-        }, 21600000); // 6 hours
-      });
+    if (sub === "on") {
+      if (refreshLoop) return message.reply("⚠️ | Refresh loop already active.");
+      const interval = parseDuration(args.slice(1).join(" ")) || 6 * 60 * 60 * 1000;
+      fs.writeJsonSync(configPath, { enabled: true, interval });
+      message.reply(`✅ | Refresh ON. Restart every ${formatDuration(interval)}.`);
+      startRefreshLoop(api, interval);
     }
 
-    else if (args[0] === "off") {
-      if (!isEnabled) return message.reply(getLang("alreadyOff"));
-      isEnabled = false;
-      if (fs.existsSync(pathFile)) fs.unlinkSync(pathFile);
-      message.reply(getLang("off"));
+    else if (sub === "off") {
+      if (!fs.existsSync(configPath)) return message.reply("⚠️ | Refresh is not running.");
+      fs.removeSync(configPath);
+      clearInterval(refreshLoop);
+      refreshLoop = null;
+      message.reply("❌ | Refresh OFF.");
+    }
+
+    else if (sub === "notify") {
+      const action = args[1];
+      const tid = args[2] || event.threadID;
+      const list = fs.existsSync(notifyPath) ? fs.readJsonSync(notifyPath) : [];
+
+      if (action === "add") {
+        if (!list.includes(tid)) list.push(tid);
+        fs.writeJsonSync(notifyPath, list);
+        message.reply(`✅ | Added TID ${tid} to notification list.`);
+      } else if (action === "remove") {
+        const index = list.indexOf(tid);
+        if (index !== -1) list.splice(index, 1);
+        fs.writeJsonSync(notifyPath, list);
+        message.reply(`❌ | Removed TID ${tid} from notification list.`);
+      } else if (action === "list") {
+        if (list.length === 0) return message.reply("📭 | No TIDs in notification list.");
+        message.reply("📋 | Notification Group TIDs:\n" + list.join("\n"));
+      } else {
+        message.reply("Usage:\n{pn} notify add/remove/list [tid]");
+      }
     }
 
     else {
-      message.reply("Use:\n→ refresh on\n→ refresh off");
+      message.reply("Use:\n→ refresh on [time]\n→ refresh off\n→ refresh notify add/remove/list [tid]");
+    }
+  },
+
+  onLoad: ({ api }) => {
+    if (fs.existsSync(configPath)) {
+      const { enabled, interval } = fs.readJsonSync(configPath);
+      if (enabled) startRefreshLoop(api, interval || 6 * 60 * 60 * 1000);
     }
   }
 };
+
+function startRefreshLoop(api, interval) {
+  const restart = () => {
+    const uptimeMins = Math.floor((Date.now() - uptimeStart) / 60000);
+    const groups = fs.existsSync(notifyPath) ? fs.readJsonSync(notifyPath) : [];
+
+    for (const tid of groups) {
+      api.sendMessage(
+        `🔁 Bot restarting...\n🕒 Uptime: ${uptimeMins} minutes\n🧹 Clearing memory...`,
+        tid
+      );
+    }
+
+    // Clear memory (may fail in restricted environments)
+    exec("sync; echo 3 > /proc/sys/vm/drop_caches", (err) => {
+      if (err) console.log("Memory clear error:", err.message);
+    });
+
+    // Optional: hook sleep.js
+    try {
+      const sleepCmd = require("./sleep");
+      if (typeof sleepCmd.trigger === "function") sleepCmd.trigger(api);
+    } catch (e) {}
+
+    setTimeout(() => process.exit(2), 2000);
+  };
+
+  refreshLoop = setInterval(restart, interval);
+  setTimeout(restart, interval);
+}
+
+function parseDuration(text) {
+  const regex = /(\d+)\s*h(?:ours?)?|\s*(\d+)\s*m(?:inutes?)?/gi;
+  let match, ms = 0;
+  while ((match = regex.exec(text))) {
+    if (match[1]) ms += parseInt(match[1]) * 60 * 60 * 1000;
+    if (match[2]) ms += parseInt(match[2]) * 60 * 1000;
+  }
+  return ms || null;
+}
+
+function formatDuration(ms) {
+  const h = Math.floor(ms / (60 * 60 * 1000));
+  const m = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+  return `${h > 0 ? h + "h " : ""}${m}m`;
+}
