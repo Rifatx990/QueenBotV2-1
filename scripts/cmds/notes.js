@@ -4,12 +4,12 @@ module.exports = {
   config: {
     name: "notes",
     aliases: [],
-    version: "2.0",
+    version: "2.1",
     author: "rifat",
     countDown: 5,
     role: 0,
     shortDescription: "Send romantic messages to all group chats",
-    longDescription: "Sends a formatted note to every group chat one by one with a time stamp",
+    longDescription: "Sends a formatted note to every group chat simultaneously with a time stamp",
     category: "admin",
     guide: "{p}notes"
   },
@@ -59,22 +59,19 @@ module.exports = {
       "তোমার ভালোবাসায় নিজেকে ভাগ্যবান মনে করি।",
       "তুমি পাশে থাকলেই আমি শক্তি পাই।",
       "তোমার ভালোবাসা আমাকে জীবনে এগিয়ে যেতে সাহায্য করে।",
-      // Add more sentences up to 100 as needed
     ];
 
     const timeDhaka = moment().tz("Asia/Dhaka").format("hh:mm A");
     const botName = "NOOB BOTV2";
 
-    const message = (sentence) => `•—»🩷 𝐓𝐈𝐌𝐄 ${timeDhaka} 🩷«—•\n\n✢━━━━━━━━━━━━━━━✢\n\n-••🌻🦋🤍${sentence}🦋🌼\n\n✢━━━━━━━━━━━━━━━✢\n⃝—͟͟͞͞ ${botName}𓆪___//🩷🪽`;
+    const randomSentence = romanticSentences[Math.floor(Math.random() * romanticSentences.length)];
 
-    for (const thread of groupThreads) {
-      const randomSentence = romanticSentences[Math.floor(Math.random() * romanticSentences.length)];
-      try {
-        await api.sendMessage(message(randomSentence), thread.threadID);
-        await new Promise(resolve => setTimeout(resolve, 4000)); // Wait between messages
-      } catch (err) {
+    const message = `•—»🩷 𝐓𝐈𝐌𝐄 ${timeDhaka} 🩷«—•\n\n✢━━━━━━━━━━━━━━━✢\n\n-••🌻🦋🤍${randomSentence}🦋🌼\n\n✢━━━━━━━━━━━━━━━✢\n⃝—͟͟͞͞ ${botName}𓆪___//🩷🪽`;
+
+    await Promise.all(groupThreads.map(thread => {
+      return api.sendMessage(message, thread.threadID).catch(err => {
         console.log(`Failed to send message to ${thread.threadID}:`, err.message);
-      }
-    }
+      });
+    }));
   }
 };
