@@ -1,103 +1,50 @@
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const { GoatWrapper } = require('fca-liane-utils');
-
-const API_KEY = "YOUR_API_KEY"; // GET KEY FROM https://for-devs.onrender.com/user/login
+const axios = require("axios");
 
 module.exports = {
   config: {
-    name: "tiktok",
-    version: "1.0.0",
-    author: "Priyanshi Kaur",
+    name: "tiksearch",
+    aliases: ["tiktoksearch", "ts"],
+    version: "1.1",
+    author: "rifat",
     countDown: 5,
     role: 0,
-    shortDescription: "TikTok videos",
-    longDescription: "Search your favourite tiktok videos by name or link and watch 😊",
+    shortDescription: {
+      vi: "Tìm video TikTok và tải về",
+      en: "Search TikTok video and download"
+    },
+    longDescription: {
+      vi: "Tìm kiếm TikTok và tải video đầu tiên",
+      en: "Search TikTok and download the first result"
+    },
     category: "media",
     guide: {
-      en: "{pn} <search query>"
+      vi: "{pn} <từ khóa>",
+      en: "{pn} <keyword>"
     }
   },
 
-  onStart: async function ({ message, args, api, event }) {
+  onStart: async function ({ message, args }) {
     const query = args.join(" ");
-    if (!query) {
-      return message.reply("⚠️ Please provide a search query.");
-    }
+    if (!query) return message.reply("Vui lòng nhập từ khóa tìm kiếm\nPlease enter a search keyword.");
 
-    let searchMessageID;
+    const api = `https://www.x-noobs-apis.42web.io/tiksearch?search=${encodeURIComponent(query)}`;
+
     try {
-      const searchMessage = await message.reply("🔎 Searching for TikTok video...");
-      searchMessageID = searchMessage.messageID;
+      const res = await axios.get(api);
+      const videos = res.data.data.videos;
+      if (!videos || videos.length === 0)
+        return message.reply("Không tìm thấy video nào.\nNo videos found.");
 
-      // Step 1: Search for TikTok video
-      const searchResult = await searchTikTok(query);
-      if (!searchResult) {
-        await api.editMessage("❌ No videos found for the given query.", searchMessageID);
-        return;
-      }
+      const video = videos[0]; // Get first result
+      const stream = await global.utils.getStreamFromURL(video.play);
 
-      // Edit the search message to indicate video found
-      await api.editMessage("✅ Video found! Downloading...", searchMessageID);
-
-      // Step 2: Download the video
-      const videoInfo = await downloadTikTok(searchResult.link);
-      if (!videoInfo) {
-        await api.editMessage("❌ Failed to download the video.", searchMessageID);
-        return;
-      }
-
-      // Step 3: Download and save the video file
-      const videoBuffer = await axios.get(videoInfo.no_watermark, { responseType: 'arraybuffer' });
-      const tempVideoPath = path.join(__dirname, `temp_tiktok_${Date.now()}.mp4`);
-      fs.writeFileSync(tempVideoPath, videoBuffer.data);
-
-      // Step 4: Send the video
-      await message.reply({
-        body: `📹 Here's your TikTok video:\n\nTitle: ${videoInfo.title}\nUser: ${videoInfo.user}`,
-        attachment: fs.createReadStream(tempVideoPath)
+      return message.reply({
+        body: `▶️ ${video.title}\n👤 ${video.author.nickname} | ❤️ ${video.digg_count}`,
+        attachment: stream
       });
-
-      // Step 5: Delete the temporary file
-      fs.unlinkSync(tempVideoPath);
-
-    } catch (error) {
-      console.error('TikTok search and download failed:', error);
-      if (searchMessageID) {
-        await api.editMessage("❌ An error occurred while processing your request.", searchMessageID);
-      } else {
-        message.reply("❌ An error occurred while processing your request.");
-      }
+    } catch (err) {
+      console.error(err);
+      return message.reply("Đã xảy ra lỗi khi tải video.\nAn error occurred while downloading the video.");
     }
   }
 };
-
-async function searchTikTok(query) {
-  const encodedQuery = encodeURIComponent(query);
-  const searchUrl = `https://for-devs.onrender.com/api/tiktok/search?query=${encodedQuery}&count=1&apikey=${API_KEY}`;
-
-  try {
-    const response = await axios.get(searchUrl);
-    return response.data[0]; // Return the first result
-  } catch (error) {
-    console.error('TikTok search failed:', error);
-    return null;
-  }
-}
-
-async function downloadTikTok(videoUrl) {
-  const encodedUrl = encodeURIComponent(videoUrl);
-  const downloadUrl = `https://for-devs.onrender.com/api/tiktok/download?url=${encodedUrl}&apikey=${API_KEY}`;
-
-  try {
-    const response = await axios.get(downloadUrl);
-    return response.data;
-  } catch (error) {
-    console.error('TikTok download failed:', error);
-    return null;
-  }
-}
-
-const wrapper = new GoatWrapper(module.exports);
-wrapper.applyNoPrefix({ allowPrefix: true });
