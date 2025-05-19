@@ -72,7 +72,7 @@ mentions:[{id:event.senderID, tag:nname}],
 				break;
 			case "message_reaction":
 				onReaction();
-        if(event.reaction == "🚸","😡","🙂"){
+        if (["🚸", "😡", "🙂"].includes(event.reaction)) {
   if(event.userID == "100084175784749"){
 api.removeUserFromGroup(event.senderID, event.threadID, (err) => {
                 if (err) return console.log(err);
